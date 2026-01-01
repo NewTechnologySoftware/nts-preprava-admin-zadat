@@ -391,7 +391,7 @@
             onValue(ref(db, `orders/${orderId}/steps`), (snap) => {
                 let steps = snap.val();
                 if (type === 'osobni') {
-                    steps[index].text = "Osobní předání";
+                    steps[index].text = "Objednávka odeslána a po převozu ji připravíme k osobnímu předání...";
                 } 
                 steps[index].done = true;
                 steps[index].time = Date.now();
@@ -482,3 +482,4 @@
 </body>
 
 </html>
+
