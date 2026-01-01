@@ -280,7 +280,7 @@
 
         window.processPayment = (orderId, index, method) => {
             if (method === 'dobirka') {
-                renderAmountModal(orderId, index, null, "Zadat cenu dobírky:", "Dobírka:", true);
+                renderAmountModal(orderId, index, null, "Zadat cenu dobírky:", "Dobírka (zaplatíte při převzetí blíku):", true);
             } else {
                 // IBAN -> Přidat pod-možnosti
                 // Musíme načíst steps znovu, upravit pole a uložit
@@ -482,4 +482,5 @@
 </body>
 
 </html>
+
 
