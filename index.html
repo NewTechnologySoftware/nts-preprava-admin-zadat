@@ -294,7 +294,7 @@
                     // Vložit nové kroky
                     const newSteps = [
                         { text: "Čekáme na přijetí platby: ? Kč", type: "payment_waiting", done: false, time: null, indent: true },
-                        { text: "Zaplaceno", type: "standard", done: false, time: null, indent: true }
+                        { text: "Zaplaceno (při osobním převzetí nebo při doručení balíku již nemusíte nic doplácet)", type: "standard", done: false, time: null, indent: true }
                     ];
                     steps.splice(index + 1, 0, ...newSteps);
                     
@@ -482,6 +482,7 @@
 </body>
 
 </html>
+
 
 
 
