@@ -60,6 +60,21 @@
         .indent { margin-left: 25px; border-left: 2px solid #eee; padding-left: 10px; }
 
         @keyframes slideDown { from { transform: translateY(-20px); opacity: 0; } to { transform: translateY(0); opacity: 1; } }
+
+        /* NOVÉ STYLY PRO VIP FUNKCI */
+        .vip-arrow { font-size: 1.5rem; color: var(--danger); margin-right: 10px; animation: bounceRight 1s infinite; vertical-align: middle; }
+        .blinking-box { animation: blinkEffect 0.5s 4; border: 2px solid var(--success); padding: 5px; border-radius: 5px; }
+        @keyframes bounceRight { 0%, 100% { transform: translateX(0); } 50% { transform: translateX(-5px); } }
+        @keyframes blinkEffect { 0% { opacity: 1; background-color: rgba(40, 167, 69, 0.1); } 50% { opacity: 0.5; background-color: transparent; } 100% { opacity: 1; background-color: rgba(40, 167, 69, 0.1); } }
+        
+        .vip-input-container { display: flex; align-items: center; gap: 10px; margin-bottom: 20px; }
+        .vip-input-container input { margin-bottom: 0; flex: 1; }
+        .action-buttons-wrapper { display: flex; flex-direction: column; gap: 10px; margin-bottom: 20px; }
+        @media (min-width: 768px) { 
+            .action-buttons-wrapper { flex-direction: row; align-items: flex-start; } 
+            .btn-primary { margin-bottom: 0; width: auto; flex: 1; }
+            .vip-btn { width: auto; flex: 1; }
+        }
     </style>
 </head>
 <body>
@@ -67,7 +82,11 @@
     <div class="container">
         <h1>Admin panel: Shoptet aktivní objednávky Alena</h1>
         <hr>
-        <button class="btn btn-primary" onclick="openCreateModal()">Založit novou objednávku</button>
+        
+        <div class="action-buttons-wrapper">
+            <button class="btn btn-primary" onclick="openCreateModal()">Založit novou objednávku</button>
+            <button class="btn btn-success vip-btn" onclick="openVipModal()">Přidat / Upravit přebytek účtu VIP</button>
+        </div>
         
         <div id="orders-container" class="orders-grid">
             </div>
@@ -127,6 +146,114 @@
             `;
             modal.style.display = 'flex';
         };
+
+        // --- NOVÉ FUNKCE PRO VIP ÚČET ---
+        window.openVipModal = () => {
+            onValue(ref(db, 'VIP_ucet'), (snapshot) => {
+                const val = snapshot.val();
+                let isDeficitNula = (val === 'deficit_nula');
+                let numericValue = (!isDeficitNula && val) ? val : '';
+                
+                const modal = document.getElementById('modal-overlay');
+                const content = document.getElementById('modal-content');
+                
+                content.innerHTML = `
+                    <div class="modal-title">Přebytek VIP účtu Alena</div>
+                    <div class="modal-warning" id="vip-warning" style="display:none;">Je možné zadat pouze čísla kladná!</div>
+                    
+                    <label>Zadejte, jaký je přebytek na účtu Alena VIP:</label>
+                    <div class="vip-input-container" id="vip-input-wrapper" style="${isDeficitNula ? 'display:none;' : 'display:flex;'}">
+                        <input type="text" id="vip-amount" class="modal-input" value="${numericValue}" 
+                               oninput="validateVipInput(this)" placeholder="0">
+                        <span style="font-weight:bold;">Kč</span>
+                    </div>
+
+                    <div id="vip-checkbox-row" style="margin-bottom:20px; display:flex; align-items:center;">
+                        <span id="vip-arrow" class="vip-arrow" style="display:none;">➔</span>
+                        <div id="vip-checkbox-wrapper">
+                            <label style="cursor:pointer; display:flex; align-items:center;">
+                                <input type="checkbox" id="vip-clean-check" class="custom-checkbox" 
+                                       style="margin-right:10px;" 
+                                       onchange="toggleVipMode(this.checked)" 
+                                       ${isDeficitNula ? 'checked' : ''}>
+                                Účet je čistý - deficit nula - standard
+                            </label>
+                        </div>
+                    </div>
+
+                    <div class="modal-actions">
+                        <button class="btn btn-secondary" onclick="closeModal()">Zrušit</button>
+                        <button class="btn btn-success" onclick="saveVipData()">Potvrdit</button>
+                    </div>
+                `;
+                
+                modal.style.display = 'flex';
+
+                // Logika blikání a šipky
+                if (isDeficitNula) {
+                    const arrow = document.getElementById('vip-arrow');
+                    const checkboxWrapper = document.getElementById('vip-checkbox-wrapper');
+                    
+                    arrow.style.display = 'inline';
+                    checkboxWrapper.classList.add('blinking-box');
+                    
+                    setTimeout(() => {
+                        arrow.style.display = 'none';
+                        checkboxWrapper.classList.remove('blinking-box');
+                    }, 2500); // Šipka zmizí po chvilce
+                }
+
+            }, { onlyOnce: true });
+        };
+
+        window.toggleVipMode = (isChecked) => {
+            const inputWrapper = document.getElementById('vip-input-wrapper');
+            const warning = document.getElementById('vip-warning');
+            
+            if (isChecked) {
+                inputWrapper.style.display = 'none';
+                warning.style.display = 'none';
+            } else {
+                inputWrapper.style.display = 'flex';
+            }
+        };
+
+        window.validateVipInput = (input) => {
+            const warning = document.getElementById('vip-warning');
+            // Zjistíme, jestli se někdo nepokouší napsat mínus nebo jiné znaky
+            if (/[^0-9]/.test(input.value)) {
+                // Pokud je tam nepovolený znak (např. -), zobraz varování
+                if (input.value.includes('-')) {
+                    warning.style.display = 'block';
+                    warning.innerText = "Je možné zadat pouze čísla kladná!";
+                } else {
+                    // Pro jiný nepořádek jen promažeme, ale varování o kladných číslech je specifické na mínus
+                    // Zadání říká "Nepůjde tam napsat nic jiného, pouze čísla".
+                }
+            } else {
+                warning.style.display = 'none';
+            }
+            // Nahradit vše, co není číslo
+            input.value = input.value.replace(/[^0-9]/g, '');
+        };
+
+        window.saveVipData = () => {
+            const isChecked = document.getElementById('vip-clean-check').checked;
+            
+            if (isChecked) {
+                set(ref(db, 'VIP_ucet'), "deficit_nula");
+                closeModal();
+            } else {
+                const val = document.getElementById('vip-amount').value;
+                if (val === '') {
+                    alert("Zadejte částku nebo zaškrtněte deficit nula.");
+                    return;
+                }
+                set(ref(db, 'VIP_ucet'), val);
+                closeModal();
+            }
+        };
+        // ------------------------------------
 
         window.closeModal = () => {
             document.getElementById('modal-overlay').style.display = 'none';
@@ -222,8 +349,8 @@
 
                 // 2. Čekáme na přijetí platby (IBAN sub-step)
                 if (type === 'payment_waiting') {
-                     renderAmountModal(orderId, stepIndex, steps, "Zadat cenu k platbě:", "Čekáme na přijetí platby:");
-                     return;
+                      renderAmountModal(orderId, stepIndex, steps, "Zadat cenu k platbě:", "Čekáme na přijetí platby:");
+                      return;
                 }
 
                 // 3. Doručení (Výdejní místo / Adresa)
@@ -351,7 +478,7 @@
                 <label>Poloha:</label>
                 <input type="text" id="loc-text" class="modal-input">
                 <div class="modal-actions">
-                     <button class="btn btn-success" onclick="confirmLoc('${orderId}', ${index})">Uložit</button>
+                      <button class="btn btn-success" onclick="confirmLoc('${orderId}', ${index})">Uložit</button>
                 </div>
              `;
              modal.style.display = 'flex';
@@ -379,8 +506,8 @@
             content.innerHTML = `
                 <div class="modal-title">Zadat způsob přepravy</div>
                 <div style="display:flex; flex-direction:column; gap:10px; margin-bottom:15px;">
-                     <button class="btn btn-secondary" onclick="confirmCourier('${orderId}', ${index}, 'osobni')">Osobní předání</button>
-                     <button class="btn btn-primary" onclick="showTrackingInput('${orderId}', ${index})">Doprava kurýrem</button>
+                      <button class="btn btn-secondary" onclick="confirmCourier('${orderId}', ${index}, 'osobni')">Osobní předání</button>
+                      <button class="btn btn-primary" onclick="showTrackingInput('${orderId}', ${index})">Doprava kurýrem</button>
                 </div>
             `;
             modal.style.display = 'flex';
@@ -407,7 +534,7 @@
                 <label>Zadat odkaz pro sledování:</label>
                 <input type="text" id="track-link" class="modal-input">
                 <div class="modal-actions">
-                     <button class="btn btn-success" onclick="saveTracking('${orderId}', ${index})">Uložit</button>
+                      <button class="btn btn-success" onclick="saveTracking('${orderId}', ${index})">Uložit</button>
                 </div>
             `;
         };
@@ -437,7 +564,7 @@
                 <div class="modal-title">Zadat heslo</div>
                 <input type="text" id="pwd-input" class="modal-input">
                 <div class="modal-actions">
-                     <button class="btn btn-success" onclick="savePassword('${orderId}', ${index})">Uložit</button>
+                      <button class="btn btn-success" onclick="savePassword('${orderId}', ${index})">Uložit</button>
                 </div>
             `;
             modal.style.display = 'flex';
@@ -482,7 +609,3 @@
 </body>
 
 </html>
-
-
-
-
