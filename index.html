@@ -30,6 +30,10 @@
         .btn-danger { background: var(--danger); color: white; }
         .btn-secondary { background: #6c757d; color: white; }
         
+        /* Nové tlačítko pro termín doručení */
+        .btn-delivery { background: transparent; border: 1px solid var(--success); color: var(--success); font-size: 0.85rem; padding: 5px 10px; margin-left: 15px; border-radius: 4px; vertical-align: middle; }
+        .btn-delivery:hover { background: var(--success); color: white; }
+
         /* Grid Layout */
         .orders-grid { display: grid; grid-template-columns: 1fr; gap: 20px; }
         @media (min-width: 768px) { .orders-grid { grid-template-columns: 1fr 1fr; } }
@@ -52,6 +56,7 @@
         .modal-overlay { position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.5); display: none; justify-content: center; align-items: center; z-index: 1000; }
         .modal-box { background: white; padding: 25px; border-radius: 12px; width: 90%; max-width: 400px; box-shadow: 0 10px 30px rgba(0,0,0,0.2); animation: slideDown 0.3s ease; }
         .modal-title { font-size: 1.2rem; margin-bottom: 15px; font-weight: bold; }
+        .modal-subtitle { font-size: 1rem; margin-top: 15px; margin-bottom: 5px; font-weight: 600; color: #555; }
         .modal-input { width: 100%; padding: 10px; margin: 10px 0 20px 0; border: 1px solid #ccc; border-radius: 5px; box-sizing: border-box; font-size: 1rem; }
         .modal-actions { display: flex; justify-content: flex-end; gap: 10px; }
         .modal-warning { color: var(--danger); font-size: 0.9rem; margin-bottom: 15px; background: #fff3cd; padding: 10px; border-left: 4px solid var(--danger); }
@@ -75,6 +80,13 @@
             .btn-primary { margin-bottom: 0; width: auto; flex: 1; }
             .vip-btn { width: auto; flex: 1; }
         }
+
+        /* Delivery Options Styles */
+        .delivery-option { margin-bottom: 10px; padding: 10px; border: 1px solid #eee; border-radius: 6px; cursor: pointer; }
+        .delivery-option:hover { background: #f9f9f9; }
+        .delivery-option label { cursor: pointer; display: flex; align-items: center; width: 100%; font-weight: 500; }
+        .delivery-option input { margin-right: 10px; }
+        .hidden { display: none; }
     </style>
 </head>
 <body>
@@ -99,7 +111,7 @@
 
     <script type="module">
         import { initializeApp } from "https://www.gstatic.com/firebasejs/9.0.0/firebase-app.js";
-        import { getDatabase, ref, push, onValue, update, remove, set } 
+        import { getDatabase, ref, push, onValue, update, remove, set, get } 
         from "https://www.gstatic.com/firebasejs/9.0.0/firebase-database.js";
 
         const firebaseConfig = {
@@ -189,7 +201,6 @@
                 
                 modal.style.display = 'flex';
 
-                // Logika blikání a šipky
                 if (isDeficitNula) {
                     const arrow = document.getElementById('vip-arrow');
                     const checkboxWrapper = document.getElementById('vip-checkbox-wrapper');
@@ -200,7 +211,7 @@
                     setTimeout(() => {
                         arrow.style.display = 'none';
                         checkboxWrapper.classList.remove('blinking-box');
-                    }, 2500); // Šipka zmizí po chvilce
+                    }, 2500); 
                 }
 
             }, { onlyOnce: true });
@@ -220,20 +231,14 @@
 
         window.validateVipInput = (input) => {
             const warning = document.getElementById('vip-warning');
-            // Zjistíme, jestli se někdo nepokouší napsat mínus nebo jiné znaky
             if (/[^0-9]/.test(input.value)) {
-                // Pokud je tam nepovolený znak (např. -), zobraz varování
                 if (input.value.includes('-')) {
                     warning.style.display = 'block';
                     warning.innerText = "Je možné zadat pouze čísla kladná!";
-                } else {
-                    // Pro jiný nepořádek jen promažeme, ale varování o kladných číslech je specifické na mínus
-                    // Zadání říká "Nepůjde tam napsat nic jiného, pouze čísla".
                 }
             } else {
                 warning.style.display = 'none';
             }
-            // Nahradit vše, co není číslo
             input.value = input.value.replace(/[^0-9]/g, '');
         };
 
@@ -254,6 +259,157 @@
             }
         };
         // ------------------------------------
+
+        // --- NOVÉ FUNKCE PRO TERMÍN DORUČENÍ ---
+        window.openDeliveryModal = (orderId) => {
+            // Načíst aktuální data o termínu
+            onValue(ref(db, `orders/${orderId}/Termin_doruceni`), (snapshot) => {
+                const data = snapshot.val();
+                // Default: nejrychlejší vybráno, pole prázdná
+                let isRange = false;
+                let date1 = '', date2 = '', time2 = '';
+
+                if (data) {
+                    // Pokud je tam objekt s 'type'
+                    if (data.type === 'range') {
+                        isRange = true;
+                        date1 = data.dateStart || '';
+                        if (data.dateEnd) {
+                            // dateEnd je ISO string (datum + cas), pro input date potřebujeme rozdělit?
+                            // Ale pro input typu datetime-local potřebujeme formát YYYY-MM-DDTHH:MM
+                            // dateEnd je v DB jako ISO string např: 2023-10-25T14:30
+                            date2 = data.dateEnd;
+                        }
+                    } else {
+                        // type === 'fixed' nebo jen raw data
+                        isRange = false;
+                        date2 = data.dateEnd || ''; // Zde se ukládá ten jeden termín
+                    }
+                }
+
+                const modal = document.getElementById('modal-overlay');
+                const content = document.getElementById('modal-content');
+
+                content.innerHTML = `
+                    <div class="modal-title">Zadat závazný termín doručení:</div>
+                    <div style="color:#666; margin-bottom:15px; font-size:0.95rem;">Zde zvolit typ závazného termínu doručení a vyplnit jej...</div>
+
+                    <div class="delivery-option" onclick="toggleDeliveryType('range')">
+                        <label>
+                            <input type="radio" name="del_opt" id="radio-range" ${isRange ? 'checked' : ''}> Dodání od - do
+                        </label>
+                    </div>
+
+                    <div class="delivery-option" onclick="toggleDeliveryType('fixed')">
+                        <label>
+                            <input type="radio" name="del_opt" id="radio-fixed" ${!isRange ? 'checked' : ''}> Nejrychlejší doručení - kdy?
+                        </label>
+                    </div>
+
+                    <div id="cont-fixed" class="${isRange ? 'hidden' : ''}">
+                        <div class="modal-subtitle">Zvolte datum a čas doručení:</div>
+                        <input type="datetime-local" id="fixed-dt" class="modal-input" value="${!isRange ? date2 : ''}">
+                    </div>
+
+                    <div id="cont-range" class="${!isRange ? 'hidden' : ''}">
+                        <div class="modal-subtitle">Zvolte termín rozsahu doručení:</div>
+                        <label style="display:block;margin-top:5px;">Od:</label>
+                        <input type="date" id="range-date-from" class="modal-input" style="margin-top:5px;" value="${isRange ? date1 : ''}">
+                        
+                        <label style="display:block;margin-top:5px;">Do:</label>
+                        <input type="datetime-local" id="range-dt-to" class="modal-input" style="margin-top:5px;" value="${isRange ? date2 : ''}">
+                    </div>
+
+                    <div id="del-warning" class="modal-warning" style="display:none;"></div>
+
+                    <div class="modal-actions">
+                        <button class="btn btn-secondary" onclick="closeModal()">Zrušit</button>
+                        <button class="btn btn-success" onclick="saveDeliveryTerm('${orderId}')">Potvrdit</button>
+                    </div>
+                `;
+                modal.style.display = 'flex';
+            }, { onlyOnce: true });
+        };
+
+        window.toggleDeliveryType = (type) => {
+            const radioRange = document.getElementById('radio-range');
+            const radioFixed = document.getElementById('radio-fixed');
+            const contRange = document.getElementById('cont-range');
+            const contFixed = document.getElementById('cont-fixed');
+            const warning = document.getElementById('del-warning');
+
+            warning.style.display = 'none'; // Reset warning
+
+            if (type === 'range') {
+                radioRange.checked = true;
+                contRange.classList.remove('hidden');
+                contFixed.classList.add('hidden');
+            } else {
+                radioFixed.checked = true;
+                contRange.classList.add('hidden');
+                contFixed.classList.remove('hidden');
+            }
+        };
+
+        window.saveDeliveryTerm = (orderId) => {
+            const isRange = document.getElementById('radio-range').checked;
+            const warning = document.getElementById('del-warning');
+            const now = new Date();
+
+            let payload = {};
+
+            if (!isRange) {
+                // Fixed
+                const val = document.getElementById('fixed-dt').value;
+                if (!val) {
+                    warning.innerText = "Vyplňte prosím datum a čas.";
+                    warning.style.display = 'block';
+                    return;
+                }
+                const dt = new Date(val);
+                if (dt <= now) {
+                    warning.innerText = "Datum a čas musí být v budoucnosti!";
+                    warning.style.display = 'block';
+                    return;
+                }
+                
+                payload = {
+                    type: 'fixed',
+                    dateEnd: val // Ukládáme jako string z inputu (YYYY-MM-DDTHH:MM)
+                };
+
+            } else {
+                // Range
+                const dFrom = document.getElementById('range-date-from').value;
+                const dtTo = document.getElementById('range-dt-to').value;
+
+                if (!dFrom || !dtTo) {
+                    warning.innerText = "Vyplňte prosím obě pole (Od i Do).";
+                    warning.style.display = 'block';
+                    return;
+                }
+
+                const dtToObj = new Date(dtTo);
+                // Validuje se jen "Do"
+                if (dtToObj <= now) {
+                    warning.innerText = "Datum a čas 'Do' musí být v budoucnosti!";
+                    warning.style.display = 'block';
+                    return;
+                }
+
+                payload = {
+                    type: 'range',
+                    dateStart: dFrom, // date string YYYY-MM-DD
+                    dateEnd: dtTo     // datetime string
+                };
+            }
+
+            // Uložit do DB
+            update(ref(db, `orders/${orderId}`), { Termin_doruceni: payload })
+                .then(() => closeModal())
+                .catch(err => alert("Chyba: " + err));
+        };
+        // ---------------------------------------------
 
         window.closeModal = () => {
             document.getElementById('modal-overlay').style.display = 'none';
@@ -280,7 +436,6 @@
             const data = snapshot.val();
             
             if (data) {
-                // Převést na pole a seřadit (nejnovější nahoře, volitelně)
                 const orders = Object.entries(data).reverse(); 
 
                 orders.forEach(([key, order]) => {
@@ -310,8 +465,12 @@
                         });
                     }
 
+                    // Přidáno tlačítko pro termín doručení k nadpisu
                     card.innerHTML = `
-                        <h2>${order.name}</h2>
+                        <h2>
+                            ${order.name}
+                            <button class="btn btn-delivery" onclick="openDeliveryModal('${key}')">Přidat / upravit termín doručení</button>
+                        </h2>
                         <div class="steps-list">${stepsHtml}</div>
                     `;
                     ordersContainer.appendChild(card);
@@ -323,31 +482,27 @@
         window.handleStepChange = (orderId, stepIndex, isChecked, type) => {
             const orderRef = ref(db, `orders/${orderId}/steps`);
             
-            // Získání aktuálního stavu objednávky pro manipulaci
             onValue(ref(db, `orders/${orderId}`), (snapshot) => {
                 const orderData = snapshot.val();
                 let steps = orderData.steps;
                 const currentStep = steps[stepIndex];
 
-                // Pokud odškrtáváme (z 1 na 0), jen uložíme
                 if (!isChecked) {
                     steps[stepIndex].done = false;
                     steps[stepIndex].time = null;
                     update(ref(db, `orders/${orderId}`), { steps: steps });
-                    return; // Konec, neřešíme modaly
+                    return; 
                 }
 
-                // Pokud zaškrtáváme (z 0 na 1) -> Řešíme logiku
                 const now = Date.now();
 
                 // 1. Způsob platby
                 if (type === 'payment_choice') {
-                    // Reset checkboxu vizuálně, dokud nevybere
                     renderPaymentModal(orderId, stepIndex, steps);
                     return; 
                 }
 
-                // 2. Čekáme na přijetí platby (IBAN sub-step)
+                // 2. Čekáme na přijetí platby
                 if (type === 'payment_waiting') {
                       renderAmountModal(orderId, stepIndex, steps, "Zadat cenu k platbě:", "Čekáme na přijetí platby:");
                       return;
@@ -374,12 +529,10 @@
                 // 6. Konec (Smazat)
                 if (type === 'final_delete') {
                     renderDeleteWarning(orderId);
-                    // Checkbox vracíme na false, dokud nepotvrdí smazání
                     document.querySelector(`input[onchange*="${stepIndex}"]`).checked = false; 
                     return;
                 }
 
-                // Defaultní chování (jen update času a stavu)
                 steps[stepIndex].done = true;
                 steps[stepIndex].time = now;
                 update(ref(db, `orders/${orderId}`), { steps: steps });
@@ -401,7 +554,6 @@
                 </div>
             `;
             modal.style.display = 'flex';
-            // Vracíme checkbox na false, kdyby to zavřel
             document.querySelector(`input[onchange*="${index}"]`).checked = false;
         }
 
@@ -409,16 +561,13 @@
             if (method === 'dobirka') {
                 renderAmountModal(orderId, index, null, "Zadat cenu dobírky:", "Dobírka (zaplatíte při převzetí balíku):", true);
             } else {
-                // IBAN -> Přidat pod-možnosti
-                // Musíme načíst steps znovu, upravit pole a uložit
                 onValue(ref(db, `orders/${orderId}/steps`), (snap) => {
                     let steps = snap.val();
                     steps[index].text = "Způsob platby: Převodem na účet IBAN-NTS";
                     steps[index].done = true;
                     steps[index].time = Date.now();
-                    steps[index].type = "standard"; // Už to není choice
+                    steps[index].type = "standard"; 
 
-                    // Vložit nové kroky
                     const newSteps = [
                         { text: "Čekáme na přijetí platby: ? Kč", type: "payment_waiting", done: false, time: null, indent: true },
                         { text: "Zaplaceno (při osobním převzetí nebo při doručení balíku již nemusíte nic doplácet)", type: "standard", done: false, time: null, indent: true }
@@ -431,7 +580,7 @@
             }
         };
 
-        // Univerzální modal pro cenu (Dobírka i Platba)
+        // Univerzální modal pro cenu
         function renderAmountModal(orderId, index, steps, title, prefix, isDobirkaUpdate = false) {
             const modal = document.getElementById('modal-overlay');
             const content = document.getElementById('modal-content');
@@ -458,7 +607,7 @@
                 steps[index].text = `${prefix} ${val} Kč`;
                 steps[index].done = true;
                 steps[index].time = Date.now();
-                if(isDobirkaUpdate) steps[index].type = "standard"; // Fix type
+                if(isDobirkaUpdate) steps[index].type = "standard"; 
                 
                 update(ref(db, `orders/${orderId}`), { steps: steps });
                 closeModal();
@@ -543,11 +692,6 @@
             const link = document.getElementById('track-link').value;
             onValue(ref(db, `orders/${orderId}/steps`), (snap) => {
                 let steps = snap.val();
-                // Speciální formátování pro tracking link - uložíme HTML do textu
-                // Poznámka: V Adminu to bude vypadat jako HTML kód nebo text, ale pro funkčnost je to OK.
-                // Pro čistotu zde uložíme speciální flag, ale zadání říká "nahradit X tlačítkem".
-                // Uložíme text jako JSON string nebo marker, který pak user view rozparsuje.
-                // Zde jednoduše uložíme: "TRACKING_BTN|URL"
                 steps[index].text = `TRACKING_BTN|${link}`;
                 steps[index].done = true;
                 steps[index].time = Date.now();
